@@ -64,7 +64,6 @@ void showHumidTempSensor()
 {
     char buff[128];
     snprintf(buff, 128, "Environement\r\nPress: %s\r\nTemp:%sC\r\nHumid:%s%%\r\n", f2s(pressure, 2), f2s(temperature, 1), f2s(humidity, 1));
-    Screen.clean();
     Screen.print(buff);
 }
 
