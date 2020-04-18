@@ -5,7 +5,7 @@ This project will use the [MXCHIP Iot DevKit](https://aka.ms/iot-devkit) to crea
 - [X] Pressure
 - [X] Humidity
 - [X] Temperature
-- [ ] Presence
+- [X] Presence
 
 ### Pressure, Humidity, Temperature
 The *MXChip* has these sensors onborad, so I'll use them directly.
