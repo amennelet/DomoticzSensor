@@ -2,8 +2,9 @@
 #include "Sensor.h"
 #include "MQTTClient.h"
 #include "MQTTNetwork.h"
+#include "AudioClass.h"
 
-const int loopDelay = 60000;
+const int loopDelay = 10000;
 bool hasWifi = false;
 
 bool hasSensors = false;
@@ -18,8 +19,15 @@ const char *mqttServer = "domoticz";
 int port = 1883;
 const char *clientID = "InternalSensors";
 const char *topic = "domoticz/in";
-int idx = 95;
-const int updateEveryNLoop = 10;
+int idxPressTempHumid = 95;
+
+AudioClass &Audio = AudioClass::getInstance();
+const int SAMPLE_DURATION = 3;
+const int AUDIO_SIZE = 32000 * SAMPLE_DURATION + 45;
+char *waveFile;
+int totalSize;
+int currentSoundVolume = 0;
+int idxSound = 96;
 
 void initWifi()
 {
@@ -55,12 +63,21 @@ void initSensors()
         Screen.print(1, "Init sensors failed");
 }
 
+void initSound()
+{
+    waveFile = (char *)malloc(AUDIO_SIZE + 1);
+    memset(waveFile, 0x0, AUDIO_SIZE);
+}
+
 void setup()
 {
     Serial.begin(115200);
     initWifi();
     if (hasWifi)
+    {
         initSensors();
+        initSound();
+    }
 }
 
 void getHumidTempSensor()
@@ -74,8 +91,56 @@ void getHumidTempSensor()
 void showHumidTempSensor()
 {
     char buff[128];
-    snprintf(buff, 128, "Environement\r\nPress: %s\r\nTemp:%sC\r\nHumid:%s%%\r\n", f2s(pressure, 2), f2s(temperature, 1), f2s(humidity, 1));
+    snprintf(buff, 128, "Press: %s\r\nTemp:%sC\r\nHumid:%s%%\r\n", f2s(pressure, 2), f2s(temperature, 1), f2s(humidity, 1));
     Screen.print(buff);
+}
+
+void getCurrentSoundVolume()
+{
+    Serial.println("Start getCurrentSoundVolume");
+    Audio.format(8000, 16);
+    if (Audio.startRecord(waveFile, AUDIO_SIZE, 3) != 0)
+    {
+        Serial.println("Audio.startRecord failed");
+        return;
+    }
+    while (Audio.getAudioState() == AUDIO_STATE_RECORDING)
+    {
+        delay(100);
+    }
+    Audio.getWav(&totalSize);
+    Serial.printf("Stereo size = %i\r\n", totalSize);
+
+    int totalSample = 0;
+    double sum = 0;
+    Serial.printf("First sample at = %i\r\n", sizeof(WaveHeader));
+    for (int index = sizeof(WaveHeader); index < totalSize; index += 2)
+    {
+        uint16_t value = ((uint16_t)waveFile[index]) | (((uint16_t)waveFile[index + 1]) << 8);
+        sum += value * value;
+        totalSample++;
+    }
+    currentSoundVolume = (int)sqrt(abs(sum) / totalSample);
+    Serial.printf("Current Sound Volume = %i (%i samples, %f sum)\r\n", currentSoundVolume, totalSample, sum);
+
+    Audio.startPlay(waveFile, totalSize);
+    while (Audio.getAudioState() == AUDIO_STATE_PLAYING)
+    {
+        delay(100);
+    }
+}
+
+void showSoundSensor()
+{
+    char buff[128];
+    snprintf(buff, 128, "Sound: %i\r\n", currentSoundVolume);
+    Screen.print(3, buff);
+}
+
+void createSoundPayload(int idx, char *payload)
+{
+    // idx=IDX&nvalue=0&svalue=TEMP;HUM;HUM_STAT;BAR;BAR_FOR
+    sprintf(payload, "{\"idx\":%u, \"nvalue\":0, \"svalue\":\"%i\"}", idx, currentSoundVolume);
 }
 
 int sendMQTT(char *topic, char *payload)
@@ -133,30 +198,32 @@ void createPressTempHumidPayload(int idx, char *payload)
     sprintf(payload, "{\"idx\":%u, \"nvalue\":0, \"svalue\":\"%s;%s;0;%s;0\"}", idx, f2s(temperature, 1), f2s(humidity, 1), f2s(pressure, 2));
 }
 
-int loopCounter = 0;
-
 void loop()
 {
     Serial.println("\r\n>>>Enter Loop");
 
     if (hasWifi && hasSensors)
     {
+        getCurrentSoundVolume();
         getHumidTempSensor();
         showHumidTempSensor();
-        if (loopCounter == 0)
-        {
-            Serial.println("Sending MQTT");
-            char payload[100];
-            createPressTempHumidPayload(idx, payload);
-            if (sendMQTT((char *)topic, payload) == 0)
-                Serial.println("sendMQTT done");
-            else
-                Serial.println("sendMQTT failed");
+        showSoundSensor();
 
-            loopCounter = updateEveryNLoop;
-        }
+        Serial.println("Sending sensors MQTT");
+        char payload[100];
+        createPressTempHumidPayload(idxPressTempHumid, payload);
+        if (sendMQTT((char *)topic, payload) == 0)
+            Serial.println("sendMQTT sensors done");
+        else
+            Serial.println("sendMQTT sensors failed");
+
+        Serial.println("Sending sound MQTT");
+        createSoundPayload(idxSound, payload);
+        if (sendMQTT((char *)topic, payload) == 0)
+            Serial.println("sendMQTT sound done");
+        else
+            Serial.println("sendMQTT sound failed");
     }
 
     delay(loopDelay);
-    loopCounter--;
 }
