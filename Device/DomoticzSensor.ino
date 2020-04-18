@@ -1,9 +1,18 @@
 #include <AZ3166WiFi.h>
+#include "Sensor.h"
 
 bool hasWifi = false;
+bool hasSensors = false;
+DevI2C *ext_i2c;
+HTS221Sensor *ht_sensor;
+LPS22HBSensor *pressureSensor;
+float temperature = 0;
+float humidity = 0;
+float pressure = 0;
 
 void initWifi()
 {
+    Screen.clean();
     Screen.print(0, "Wi-Fi Connecting");
     Serial.print("Attempting to connect to Wi-Fi");
 
@@ -21,20 +30,52 @@ void initWifi()
     }
 }
 
+void initSensors()
+{
+    Screen.clean();
+    Screen.print(0, "Init sensors");
+    ext_i2c = new DevI2C(D14, D15);
+    ht_sensor = new HTS221Sensor(*ext_i2c);
+    pressureSensor = new LPS22HBSensor(*ext_i2c);
+    hasSensors = ht_sensor->init(NULL) == 0 || pressureSensor->init(NULL) == 0;
+    if (hasSensors)
+        Screen.print(1, "Init sensors done");
+    else
+        Screen.print(1, "Init sensors failed");
+}
+
 void setup()
 {
     Serial.begin(115200);
     initWifi();
+    if (hasWifi)
+        initSensors();
+}
+
+void getHumidTempSensor()
+{
+    ht_sensor->reset();
+    ht_sensor->getTemperature(&temperature);
+    ht_sensor->getHumidity(&humidity);
+    pressureSensor->getPressure(&pressure);
+}
+
+void showHumidTempSensor()
+{
+    char buff[128];
+    snprintf(buff, 128, "Environement\r\nPress: %s\r\nTemp:%sC\r\nHumid:%s%%\r\n", f2s(pressure, 2), f2s(temperature, 1), f2s(humidity, 1));
+    Screen.clean();
+    Screen.print(buff);
 }
 
 void loop()
 {
     Serial.println("\r\n>>>Enter Loop");
 
-    if (hasWifi)
+    if (hasWifi && hasSensors)
     {
-        Screen.clean();
-        Screen.print(0, "Wellcome Alex");
+        getHumidTempSensor();
+        showHumidTempSensor();
     }
 
     delay(5000);
