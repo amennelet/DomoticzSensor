@@ -2,9 +2,9 @@
 
 ## Project goals
 This project will use the [MXCHIP Iot DevKit](https://aka.ms/iot-devkit) to create 4 sensors:
-- [ ] Pressure
-- [ ] Humidity
-- [ ] Temperature
+- [X] Pressure
+- [X] Humidity
+- [X] Temperature
 - [ ] Presence
 
 ### Pressure, Humidity, Temperature
